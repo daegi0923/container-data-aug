@@ -15,7 +15,24 @@
 | Infra | Docker Compose |
 | API Spec | Swagger |
 
----
+## Docker Compose Up
+기본/배포용 전체 스택:
+
+```powershell
+docker compose up --build
+```
+
+개발용 핫리로드 스택:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+GPU 런타임 포함 스택:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
 
 ## TO-DO
 `완료한 내용의 경우: 해당 내용 관련 링크 추가 → ☑︎ 마크로 수정`
