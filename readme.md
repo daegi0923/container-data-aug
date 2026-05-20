@@ -34,6 +34,13 @@ GPU 런타임 포함 스택:
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ```
 
+데이터셋 경로 마운트 설정:
+
+```
+호스트: ./shared/data
+컨테이너: /data
+```
+
 ## TO-DO
 `완료한 내용의 경우: 해당 내용 관련 링크 추가 → ☑︎ 마크로 수정`
 ### 7주차 진행사항
