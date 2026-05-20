@@ -40,6 +40,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 호스트: ./shared/data
 컨테이너: /data
 ```
+자세한 내용은 [@docker-compose-plan](./docs/docker-compose-plan.ko.md) 참고
 
 ## TO-DO
 `완료한 내용의 경우: 해당 내용 관련 링크 추가 → ☑︎ 마크로 수정`
