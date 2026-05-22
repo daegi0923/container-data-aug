@@ -15,16 +15,44 @@
 | Infra | Docker Compose |
 | API Spec | Swagger |
 
----
+## Docker Compose Up
+기본/배포용 전체 스택:
+
+```powershell
+docker compose up --build
+```
+
+개발용 핫리로드 스택:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+GPU 런타임 포함 스택:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+데이터셋 경로 마운트 설정:
+
+```
+호스트: ./shared/data
+컨테이너: /data
+```
+자세한 내용은 [@docker-compose-plan](./docs/docker-compose-plan.ko.md) 참고
 
 ## TO-DO
 `완료한 내용의 경우: 해당 내용 관련 링크 추가 → ☑︎ 마크로 수정`
+### 7주차 진행사항
+- ☑ **Shuffle 결과 분포 시각화** - Shuffle 결과물에 대한 데이터 분포 시각화 기능 구현 [#1](./docs/screenshots/dist_1.png)∙[#2](./docs/screenshots/dist_2.png) by `최규문`
+- ☑ **Docker Compose** - docker compose 형태로 구조화 by `손원빈`
+---
 ### 6주차 진행사항
 - ☑ **FE-BE 통합** - 프론트엔드-백엔드 API 통신 구현 by `송원호`
 - ☑ **Shuffle 구현** - 셔플 기능 구현 by `최규문`
 - ☑ **DB 구성 및 연동** - postgres DB 구성 및 연동 by `서준일`
 - ☑ **Backend에 셔플 기능 병합** - 전체적으로 동작가능한 벡엔드 구성 by `손원빈`
-- ◻ **Docker Compose** - docker compose 형태로 구조화
 ---
 ### 5주차 진행사항
 - ☑ **UI Mockup** - Mockup 형태로 frontend ui 구현 by `손원빈`

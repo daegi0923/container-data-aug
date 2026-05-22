@@ -17,6 +17,8 @@ from app.core.errors import register_exception_handlers
 from app.repositories import tasks_repo
 from app.repositories.postgres import PostgresDatabase
 from app.services.augmentation_service import AugmentationService
+from app.services.bg_color_distribution_service import BgColorDistributionService
+from app.services.char_distribution_service import CharDistributionService
 from app.services.project_service import ProjectService
 
 
@@ -52,7 +54,14 @@ def create_app(
         yield
 
     project_service = ProjectService(db)
-    augmentation_service = AugmentationService(db, project_service)
+    char_distribution_service = CharDistributionService(db)
+    bg_color_distribution_service = BgColorDistributionService(db)
+    augmentation_service = AugmentationService(
+        db,
+        project_service,
+        char_distribution_service,
+        bg_color_distribution_service,
+    )
 
     app = FastAPI(
         title="Container Image Augmentation API",
@@ -62,6 +71,8 @@ def create_app(
     app.state.db = db
     app.state.project_service = project_service
     app.state.augmentation_service = augmentation_service
+    app.state.char_distribution_service = char_distribution_service
+    app.state.bg_color_distribution_service = bg_color_distribution_service
     app.state.run_background_tasks = run_background_tasks
 
     app.add_middleware(

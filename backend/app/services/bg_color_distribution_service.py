@@ -1,0 +1,187 @@
+import csv
+import math
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from PIL import Image
+
+from app.augmentation.shuffle import _make_global_mask
+from app.core.errors import ApiError
+from app.repositories import projects_repo, tasks_repo
+from app.repositories.postgres import PostgresDatabase
+
+_FINISHED_STATUSES = {"DONE", "FAILED", "STOPPED"}
+
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff"}
+
+REPRESENTATIVE_COLORS: dict[str, tuple[int, int, int]] = {
+    "red": (255, 0, 0),
+    "orange": (255, 165, 0),
+    "yellow": (255, 255, 0),
+    "green": (0, 128, 0),
+    "blue": (0, 0, 255),
+    "purple": (128, 0, 128),
+    "pink": (255, 192, 203),
+    "brown": (165, 42, 42),
+    "white": (255, 255, 255),
+    "gray": (128, 128, 128),
+    "black": (0, 0, 0),
+}
+
+
+class BgColorDistributionService:
+    def __init__(self, db: PostgresDatabase) -> None:
+        self._db = db
+
+    def get_distribution(self, task_id: int) -> dict[str, Any]:
+        task, project = self._require_finished_task_and_project(task_id)
+        with self._db.connect() as conn:
+            cached = tasks_repo.get_bg_color_distribution_cache(conn, task_id)
+        if cached is not None:
+            return {
+                "task_id": task_id,
+                "analyzed_image_count": cached["analyzed_image_count"],
+                "distribution": cached["distribution"],
+            }
+
+        result = self._compute_distribution(task, project)
+        self._save_distribution(result)
+        return result
+
+    def cache_distribution(self, task_id: int) -> dict[str, Any]:
+        task, project = self._require_finished_task_and_project(task_id)
+        result = self._compute_distribution(task, project)
+        self._save_distribution(result)
+        return result
+
+    def _require_finished_task_and_project(
+        self, task_id: int
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        with self._db.connect() as conn:
+            task = tasks_repo.get_by_id(conn, task_id)
+            if task is None:
+                raise ApiError(
+                    "TASK_NOT_FOUND",
+                    "Task not found",
+                    status_code=404,
+                    details={"taskId": task_id},
+                )
+            if task["status"] not in _FINISHED_STATUSES:
+                raise ApiError(
+                    "TASK_NOT_FINISHED",
+                    "Task is not finished yet",
+                    status_code=409,
+                    details={"taskId": task_id, "status": task["status"]},
+                )
+            project = projects_repo.get_by_id(conn, task["project_id"])
+            if project is None:
+                raise ApiError(
+                    "TASK_NOT_FOUND",
+                    "Task project not found",
+                    status_code=404,
+                    details={
+                        "taskId": task_id,
+                        "projectId": task["project_id"],
+                    },
+                )
+        return task, project
+
+    def _compute_distribution(
+        self, task: dict[str, Any], project: dict[str, Any]
+    ) -> dict[str, Any]:
+        output_folder = Path(task["output_folder_path"])
+        source_folder = Path(project["source_folder_path"])
+
+        weighted: dict[str, float] = {
+            color: 0.0 for color in REPRESENTATIVE_COLORS
+        }
+        total_weight = 0
+        analyzed_count = 0
+
+        for csv_path in output_folder.rglob("*_labels.csv"):
+            n = _count_data_rows(csv_path)
+            if n == 0:
+                continue
+
+            relative_dir = csv_path.parent.relative_to(output_folder)
+            stem = csv_path.name.replace("_labels.csv", "")
+            src_image = _find_source_image(source_folder / relative_dir, stem)
+            if src_image is None:
+                continue
+
+            try:
+                representative = _representative_color(src_image)
+            except Exception as exc:
+                raise ApiError(
+                    "INTERNAL_SERVER_ERROR",
+                    f"Failed to analyze image: {src_image.name}",
+                    status_code=500,
+                ) from exc
+
+            weighted[representative] += n
+            total_weight += n
+            analyzed_count += 1
+
+        if total_weight == 0:
+            distribution = {color: 0.0 for color in REPRESENTATIVE_COLORS}
+        else:
+            distribution = {
+                color: round(weighted[color] / total_weight * 100, 2)
+                for color in REPRESENTATIVE_COLORS
+            }
+
+        return {
+            "task_id": task["id"],
+            "analyzed_image_count": analyzed_count,
+            "distribution": distribution,
+        }
+
+    def _save_distribution(self, result: dict[str, Any]) -> None:
+        with self._db.connect() as conn:
+            tasks_repo.save_bg_color_distribution_cache(
+                conn,
+                result["task_id"],
+                analyzed_image_count=result["analyzed_image_count"],
+                distribution=result["distribution"],
+            )
+
+
+def _count_data_rows(csv_path: Path) -> int:
+    try:
+        with csv_path.open(encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            return sum(1 for _ in reader)
+    except Exception:
+        return 0
+
+
+def _find_source_image(directory: Path, stem: str) -> Path | None:
+    for ext in _IMAGE_EXTENSIONS:
+        candidate = directory / f"{stem}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _representative_color(image_path: Path) -> str:
+    with Image.open(image_path) as raw:
+        image = raw.convert("RGB")
+
+    mask = _make_global_mask(image)
+    mask_arr = np.array(mask)
+    img_arr = np.array(image)
+
+    bg_pixels = img_arr[mask_arr == 0]
+    if len(bg_pixels) == 0:
+        return "gray"
+
+    avg_r, avg_g, avg_b = bg_pixels.mean(axis=0).astype(int)
+    return _classify(int(avg_r), int(avg_g), int(avg_b))
+
+
+def _classify(r: int, g: int, b: int) -> str:
+    return min(
+        REPRESENTATIVE_COLORS,
+        key=lambda name: math.dist((r, g, b), REPRESENTATIVE_COLORS[name]),
+    )
